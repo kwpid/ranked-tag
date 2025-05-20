@@ -19,6 +19,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
         }
 
         #gameContainer {
@@ -27,8 +28,9 @@
             height: 600px;
             margin: 20px auto;
             background-color: #2a2a2a;
-            border-radius: 10px;
+            border-radius: 15px;
             overflow: hidden;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
         }
 
         #gameCanvas {
@@ -47,6 +49,7 @@
             align-items: center;
             justify-content: center;
             padding: 20px;
+            background: rgba(26, 26, 26, 0.95);
         }
 
         .screen.active {
@@ -54,53 +57,86 @@
         }
 
         .button {
-            background-color: #4CAF50;
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
             color: white;
-            padding: 12px 24px;
+            padding: 15px 30px;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 16px;
             margin: 10px;
-            transition: background-color 0.3s;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
         .button:hover {
-            background-color: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+            background: linear-gradient(135deg, #45a049 0%, #4CAF50 100%);
         }
 
         .stats {
-            background-color: #333;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 10px;
+            background: rgba(51, 51, 51, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px;
             width: 80%;
             max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stats h3 {
+            color: #4CAF50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stats p {
+            margin: 10px 0;
+            font-size: 1.1em;
+            display: flex;
+            justify-content: space-between;
         }
 
         .queue-info {
             font-size: 18px;
             margin: 20px 0;
+            text-align: center;
         }
 
         .countdown {
-            font-size: 48px;
+            font-size: 72px;
             font-weight: bold;
             color: #4CAF50;
+            text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
         }
 
         .player-info {
             display: flex;
             align-items: center;
-            margin: 10px 0;
+            margin: 15px 0;
+            background: rgba(51, 51, 51, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .player-avatar {
-            width: 40px;
-            height: 40px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            background-color: #666;
-            margin-right: 10px;
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            margin-right: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
         }
 
         .player-stats {
@@ -110,10 +146,58 @@
         .player-name {
             font-weight: bold;
             margin-bottom: 5px;
+            font-size: 1.2em;
+            color: #4CAF50;
         }
 
         .player-rank {
+            color: #ffffff;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        #gameTimer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 24px;
             color: #4CAF50;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 5px;
+        }
+
+        .loading-boxes {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .loading-box {
+            width: 20px;
+            height: 60px;
+            background: #4CAF50;
+            animation: loading 1s infinite;
+            border-radius: 3px;
+        }
+
+        .loading-box:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .loading-box:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes loading {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(0.5); }
+        }
+
+        .queue-time {
+            font-size: 24px;
+            color: #4CAF50;
+            margin: 20px 0;
         }
     </style>
 </head>
@@ -147,6 +231,12 @@
             <div class="queue-info">
                 <p>Estimated wait time: <span id="waitTime">30</span> seconds</p>
                 <p>Players in queue: <span id="queuePlayers">0</span></p>
+                <div class="queue-time">Time elapsed: <span id="timeElapsed">0</span>s</div>
+            </div>
+            <div class="loading-boxes">
+                <div class="loading-box"></div>
+                <div class="loading-box"></div>
+                <div class="loading-box"></div>
             </div>
             <button class="button" onclick="cancelQueue()">Cancel</button>
         </div>
