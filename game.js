@@ -6,6 +6,7 @@ const DASH_SPEED = 6;
 const DASH_COOLDOWN = 3000;
 const GAME_DURATION = 60000;
 const COUNTDOWN_DURATION = 3000;
+const K_FACTOR = 32; // ELO K-factor
 
 // Colors
 const COLORS = {
@@ -140,13 +141,14 @@ function initializeGame() {
         isHuman: true,
         isActive: true,
         lastDash: 0,
-        color: isHumanTagger ? COLORS.tagger : COLORS.runner
+        color: isHumanTagger ? COLORS.tagger : COLORS.runner,
+        rating: playerData[`rating${gameState.gameMode}v${gameState.gameMode}`]
     });
     
     // Add AI players
     const totalPlayers = gameState.gameMode * 2;
     for (let i = 1; i < totalPlayers; i++) {
-        const isTagger = i < totalPlayers / 2;
+        const isTagger = (i < totalPlayers / 2) !== isHumanTagger; // Ensure opposite team of human
         gameState.players.push({
             x: Math.random() * (canvas.width - 100) + 50,
             y: Math.random() * (canvas.height - 100) + 50,
@@ -157,7 +159,8 @@ function initializeGame() {
             color: isTagger ? COLORS.tagger : COLORS.runner,
             targetX: 0,
             targetY: 0,
-            lastDecision: 0
+            lastDecision: 0,
+            rating: playerData[`rating${gameState.gameMode}v${gameState.gameMode}`] + (Math.random() * 100 - 50) // AI rating within ±50 of player
         });
     }
 
@@ -310,36 +313,44 @@ function updateHumanPlayer(player) {
 
 function updateAIPlayer(player) {
     // Add human-like delay but make it shorter
-    if (Date.now() - player.lastDecision < 50) return; // Reduced from 100ms to 50ms
+    if (Date.now() - player.lastDecision < 50) return;
     player.lastDecision = Date.now();
     
-    // Find nearest target
-    let nearestTarget = null;
+    if (player.isTagger) {
+        updateTaggerAI(player);
+    } else {
+        updateRunnerAI(player);
+    }
+}
+
+function updateTaggerAI(player) {
+    // Find nearest runner
+    let nearestRunner = null;
     let minDistance = Infinity;
     
     gameState.players.forEach(target => {
-        if (target.isActive && target.isTagger !== player.isTagger) {
+        if (target.isActive && !target.isTagger) {
             const distance = Math.hypot(target.x - player.x, target.y - player.y);
             if (distance < minDistance) {
                 minDistance = distance;
-                nearestTarget = target;
+                nearestRunner = target;
             }
         }
     });
     
-    if (nearestTarget) {
+    if (nearestRunner) {
         // Calculate direction to target
-        const dx = nearestTarget.x - player.x;
-        const dy = nearestTarget.y - player.y;
+        const dx = nearestRunner.x - player.x;
+        const dy = nearestRunner.y - player.y;
         const distance = Math.hypot(dx, dy);
         
         // Normalize direction
         const dirX = dx / distance;
         const dirY = dy / distance;
         
-        // Apply movement with some randomness for more human-like behavior
-        const speed = player.isTagger ? TAGGER_SPEED : PLAYER_SPEED;
-        const randomFactor = 0.8 + Math.random() * 0.4; // Random speed variation between 80% and 120%
+        // Apply movement with some randomness
+        const speed = TAGGER_SPEED;
+        const randomFactor = 0.9 + Math.random() * 0.2; // Less random variation for taggers
         
         const newX = player.x + dirX * speed * randomFactor;
         const newY = player.y + dirY * speed * randomFactor;
@@ -356,30 +367,109 @@ function updateAIPlayer(player) {
         player.x = Math.max(PLAYER_RADIUS, Math.min(800 - PLAYER_RADIUS, player.x));
         player.y = Math.max(PLAYER_RADIUS, Math.min(600 - PLAYER_RADIUS, player.y));
         
-        // Random dash with increased probability
-        if (Math.random() < 0.02 && Date.now() - player.lastDash > DASH_COOLDOWN) { // Increased from 0.01 to 0.02
+        // Strategic dash when close to target
+        if (distance < 100 && Math.random() < 0.05 && Date.now() - player.lastDash > DASH_COOLDOWN) {
             player.lastDash = Date.now();
             player.x += dirX * DASH_SPEED;
             player.y += dirY * DASH_SPEED;
         }
-    } else {
-        // If no target found, move randomly
-        const randomAngle = Math.random() * Math.PI * 2;
-        const speed = player.isTagger ? TAGGER_SPEED : PLAYER_SPEED;
-        
-        const newX = player.x + Math.cos(randomAngle) * speed;
-        const newY = player.y + Math.sin(randomAngle) * speed;
-        
-        if (!checkWallCollision(newX, player.y)) {
-            player.x = newX;
+    }
+}
+
+function updateRunnerAI(player) {
+    // Find nearest tagger
+    let nearestTagger = null;
+    let minDistance = Infinity;
+    
+    gameState.players.forEach(target => {
+        if (target.isActive && target.isTagger) {
+            const distance = Math.hypot(target.x - player.x, target.y - player.y);
+            if (distance < minDistance) {
+                minDistance = distance;
+                nearestTagger = target;
+            }
         }
-        if (!checkWallCollision(player.x, newY)) {
-            player.y = newY;
+    });
+    
+    if (nearestTagger) {
+        // Calculate direction away from tagger
+        const dx = player.x - nearestTagger.x;
+        const dy = player.y - nearestTagger.y;
+        const distance = Math.hypot(dx, dy);
+        
+        // Normalize direction
+        const dirX = dx / distance;
+        const dirY = dy / distance;
+        
+        // Find nearest wall for cover
+        let nearestWall = null;
+        let wallDistance = Infinity;
+        
+        gameState.walls.forEach(wall => {
+            const wallCenterX = wall.x + wall.width / 2;
+            const wallCenterY = wall.y + wall.height / 2;
+            const dist = Math.hypot(wallCenterX - player.x, wallCenterY - player.y);
+            if (dist < wallDistance) {
+                wallDistance = dist;
+                nearestWall = wall;
+            }
+        });
+        
+        // If tagger is close, try to get behind a wall
+        if (distance < 200 && nearestWall) {
+            const wallDirX = nearestWall.x + nearestWall.width / 2 - player.x;
+            const wallDirY = nearestWall.y + nearestWall.height / 2 - player.y;
+            const wallDist = Math.hypot(wallDirX, wallDirY);
+            
+            // Blend movement between away from tagger and towards wall
+            const blendFactor = Math.min(1, 200 / distance);
+            const finalDirX = (dirX * (1 - blendFactor) + (wallDirX / wallDist) * blendFactor);
+            const finalDirY = (dirY * (1 - blendFactor) + (wallDirY / wallDist) * blendFactor);
+            
+            // Normalize final direction
+            const finalDist = Math.hypot(finalDirX, finalDirY);
+            const normalizedDirX = finalDirX / finalDist;
+            const normalizedDirY = finalDirY / finalDist;
+            
+            // Apply movement
+            const speed = PLAYER_SPEED;
+            const randomFactor = 0.8 + Math.random() * 0.4;
+            
+            const newX = player.x + normalizedDirX * speed * randomFactor;
+            const newY = player.y + normalizedDirY * speed * randomFactor;
+            
+            if (!checkWallCollision(newX, player.y)) {
+                player.x = newX;
+            }
+            if (!checkWallCollision(player.x, newY)) {
+                player.y = newY;
+            }
+        } else {
+            // Just run away from tagger
+            const speed = PLAYER_SPEED;
+            const randomFactor = 0.8 + Math.random() * 0.4;
+            
+            const newX = player.x + dirX * speed * randomFactor;
+            const newY = player.y + dirY * speed * randomFactor;
+            
+            if (!checkWallCollision(newX, player.y)) {
+                player.x = newX;
+            }
+            if (!checkWallCollision(player.x, newY)) {
+                player.y = newY;
+            }
         }
         
         // Keep player in bounds
         player.x = Math.max(PLAYER_RADIUS, Math.min(800 - PLAYER_RADIUS, player.x));
         player.y = Math.max(PLAYER_RADIUS, Math.min(600 - PLAYER_RADIUS, player.y));
+        
+        // Emergency dash when tagger is very close
+        if (distance < 50 && Math.random() < 0.1 && Date.now() - player.lastDash > DASH_COOLDOWN) {
+            player.lastDash = Date.now();
+            player.x += dirX * DASH_SPEED;
+            player.y += dirY * DASH_SPEED;
+        }
     }
 }
 
@@ -453,6 +543,12 @@ function renderGame() {
     });
 }
 
+function calculateELOChange(playerRating, opponentRating, isWinner) {
+    const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - playerRating) / 400));
+    const actualScore = isWinner ? 1 : 0;
+    return Math.round(K_FACTOR * (actualScore - expectedScore));
+}
+
 function endGame() {
     clearInterval(gameState.gameInterval);
     gameState.isRunning = false;
@@ -460,25 +556,34 @@ function endGame() {
     const activeRunners = gameState.players.filter(p => !p.isTagger && p.isActive).length;
     const runnersWin = activeRunners > 0;
     
-    // Update ratings
-    const ratingKey = `rating${gameState.gameMode}v${gameState.gameMode}`;
-    const ratingChange = runnersWin ? 25 : -20;
-    playerData[ratingKey] += ratingChange;
+    // Get human player and their opponent
+    const humanPlayer = gameState.players.find(p => p.isHuman);
+    const opponent = gameState.players.find(p => !p.isHuman);
     
-    // Update stats
-    if (runnersWin) {
-        playerData.wins++;
-    } else {
-        playerData.losses++;
+    if (humanPlayer && opponent) {
+        // Calculate ELO change
+        const isHumanWinner = (runnersWin && !humanPlayer.isTagger) || (!runnersWin && humanPlayer.isTagger);
+        const ratingChange = calculateELOChange(humanPlayer.rating, opponent.rating, isHumanWinner);
+        
+        // Update ratings
+        const ratingKey = `rating${gameState.gameMode}v${gameState.gameMode}`;
+        playerData[ratingKey] += ratingChange;
+        
+        // Update stats
+        if (isHumanWinner) {
+            playerData.wins++;
+        } else {
+            playerData.losses++;
+        }
+        
+        savePlayerData();
+        
+        // Show end screen
+        document.getElementById('gameResult').textContent = runnersWin ? 'Runners Win!' : 'Taggers Win!';
+        document.getElementById('matchDuration').textContent = Math.ceil((GAME_DURATION - gameState.gameTime) / 1000);
+        document.getElementById('ratingChange').textContent = `${ratingChange > 0 ? '+' : ''}${ratingChange}`;
+        showScreen('endScreen');
     }
-    
-    savePlayerData();
-    
-    // Show end screen
-    document.getElementById('gameResult').textContent = runnersWin ? 'Runners Win!' : 'Taggers Win!';
-    document.getElementById('matchDuration').textContent = Math.ceil((GAME_DURATION - gameState.gameTime) / 1000);
-    document.getElementById('ratingChange').textContent = `${ratingChange > 0 ? '+' : ''}${ratingChange}`;
-    showScreen('endScreen');
 }
 
 function returnToMenu() {
