@@ -154,8 +154,13 @@ function initializeGame() {
     // Initialize players
     gameState.players = [];
     
-    // For 1v1, ensure one player is tagger and one is runner
-    const isHumanTagger = gameState.gameMode === 1 ? Math.random() < 0.5 : Math.random() < 0.5;
+    // Calculate total players and team sizes
+    const totalPlayers = gameState.gameMode * 2;
+    const taggersPerTeam = gameState.gameMode;
+    const runnersPerTeam = gameState.gameMode;
+    
+    // Randomly assign human player's role
+    const isHumanTagger = Math.random() < 0.5;
     
     // Add human player
     const humanSpawn = findSafeSpawnLocation();
@@ -167,25 +172,57 @@ function initializeGame() {
         isActive: true,
         lastDash: 0,
         color: isHumanTagger ? COLORS.tagger : COLORS.runner,
-        rating: playerData[`rating${gameState.gameMode}v${gameState.gameMode}`]
+        rating: playerData[`rating${gameState.gameMode}v${gameState.gameMode}`],
+        targetX: 0,
+        targetY: 0,
+        lastDecision: 0,
+        lastDirectionChange: 0,
+        currentDirection: { x: 0, y: 0 },
+        predictionError: 0
     });
     
     // Add AI players
-    const totalPlayers = gameState.gameMode * 2;
-    for (let i = 1; i < totalPlayers; i++) {
-        const isTagger = gameState.gameMode === 1 ? !isHumanTagger : (i < totalPlayers / 2) !== isHumanTagger;
+    const remainingTaggers = taggersPerTeam - (isHumanTagger ? 1 : 0);
+    const remainingRunners = runnersPerTeam - (isHumanTagger ? 0 : 1);
+    
+    // Add tagger AIs
+    for (let i = 0; i < remainingTaggers; i++) {
         const aiSpawn = findSafeSpawnLocation();
         gameState.players.push({
             x: aiSpawn.x,
             y: aiSpawn.y,
-            isTagger: isTagger,
+            isTagger: true,
             isHuman: false,
             isActive: true,
             lastDash: 0,
-            color: isTagger ? COLORS.tagger : COLORS.runner,
+            color: COLORS.tagger,
             targetX: 0,
             targetY: 0,
             lastDecision: 0,
+            lastDirectionChange: 0,
+            currentDirection: { x: 0, y: 0 },
+            predictionError: 0,
+            rating: playerData[`rating${gameState.gameMode}v${gameState.gameMode}`] + (Math.random() * 100 - 50)
+        });
+    }
+    
+    // Add runner AIs
+    for (let i = 0; i < remainingRunners; i++) {
+        const aiSpawn = findSafeSpawnLocation();
+        gameState.players.push({
+            x: aiSpawn.x,
+            y: aiSpawn.y,
+            isTagger: false,
+            isHuman: false,
+            isActive: true,
+            lastDash: 0,
+            color: COLORS.runner,
+            targetX: 0,
+            targetY: 0,
+            lastDecision: 0,
+            lastDirectionChange: 0,
+            currentDirection: { x: 0, y: 0 },
+            predictionError: 0,
             rating: playerData[`rating${gameState.gameMode}v${gameState.gameMode}`] + (Math.random() * 100 - 50)
         });
     }
@@ -337,8 +374,8 @@ function updateHumanPlayer(player) {
 }
 
 function updateAIPlayer(player) {
-    // Add human-like delay but make it shorter
-    if (Date.now() - player.lastDecision < 50) return;
+    // Add human-like delay
+    if (Date.now() - player.lastDecision < 100 + Math.random() * 50) return;
     player.lastDecision = Date.now();
     
     if (player.isTagger) {
@@ -348,14 +385,22 @@ function updateAIPlayer(player) {
     }
 }
 
-function findPathToTarget(startX, startY, targetX, targetY) {
-    // Simple pathfinding that avoids walls
-    const path = [];
-    let currentX = startX;
-    let currentY = startY;
+function findPathToTarget(startX, startY, targetX, targetY, player) {
+    // Get all walls and players as obstacles
+    const obstacles = [...gameState.walls];
+    gameState.players.forEach(p => {
+        if (p !== player && p.isActive) {
+            obstacles.push({
+                x: p.x - PLAYER_RADIUS * 2,
+                y: p.y - PLAYER_RADIUS * 2,
+                width: PLAYER_RADIUS * 4,
+                height: PLAYER_RADIUS * 4
+            });
+        }
+    });
     
     // Try direct path first
-    if (!checkWallCollision(targetX, targetY)) {
+    if (!checkObstacleCollision(targetX, targetY, obstacles)) {
         return { x: targetX, y: targetY };
     }
     
@@ -364,24 +409,37 @@ function findPathToTarget(startX, startY, targetX, targetY) {
     const distance = Math.hypot(targetX - startX, targetY - startY);
     
     // Try different angles to find a clear path
-    for (let offset = -Math.PI/4; offset <= Math.PI/4; offset += Math.PI/8) {
+    for (let offset = -Math.PI/2; offset <= Math.PI/2; offset += Math.PI/8) {
         const testAngle = angle + offset;
         const testX = startX + Math.cos(testAngle) * distance;
         const testY = startY + Math.sin(testAngle) * distance;
         
-        if (!checkWallCollision(testX, testY)) {
+        if (!checkObstacleCollision(testX, testY, obstacles)) {
             return { x: testX, y: testY };
         }
     }
     
-    // If no clear path found, move towards target while avoiding walls
+    // If no clear path found, move towards target while avoiding obstacles
     return {
         x: startX + Math.cos(angle) * PLAYER_SPEED,
         y: startY + Math.sin(angle) * PLAYER_SPEED
     };
 }
 
+function checkObstacleCollision(x, y, obstacles) {
+    return obstacles.some(obstacle => {
+        return x + PLAYER_RADIUS > obstacle.x &&
+               x - PLAYER_RADIUS < obstacle.x + obstacle.width &&
+               y + PLAYER_RADIUS > obstacle.y &&
+               y - PLAYER_RADIUS < obstacle.y + obstacle.height;
+    });
+}
+
 function updateTaggerAI(player) {
+    // Add human-like delay
+    if (Date.now() - player.lastDecision < 100 + Math.random() * 50) return;
+    player.lastDecision = Date.now();
+    
     // Find nearest runner
     let nearestRunner = null;
     let minDistance = Infinity;
@@ -397,8 +455,23 @@ function updateTaggerAI(player) {
     });
     
     if (nearestRunner) {
-        // Find path to target
-        const path = findPathToTarget(player.x, player.y, nearestRunner.x, nearestRunner.y);
+        // Predict runner's movement
+        const predictedX = nearestRunner.x + nearestRunner.currentDirection.x * 50;
+        const predictedY = nearestRunner.y + nearestRunner.currentDirection.y * 50;
+        
+        // Add some prediction error to make it more realistic
+        player.predictionError = Math.min(1, player.predictionError + 0.1);
+        const errorX = (Math.random() - 0.5) * 100 * player.predictionError;
+        const errorY = (Math.random() - 0.5) * 100 * player.predictionError;
+        
+        // Find path to predicted position
+        const path = findPathToTarget(
+            player.x, 
+            player.y, 
+            predictedX + errorX, 
+            predictedY + errorY,
+            player
+        );
         
         // Calculate direction to next path point
         const dx = path.x - player.x;
@@ -406,16 +479,31 @@ function updateTaggerAI(player) {
         const distance = Math.hypot(dx, dy);
         
         if (distance > 0) {
+            // Add human-like movement patterns
+            if (Date.now() - player.lastDirectionChange > 500 + Math.random() * 1000) {
+                player.currentDirection = {
+                    x: dx / distance,
+                    y: dy / distance
+                };
+                player.lastDirectionChange = Date.now();
+            }
+            
+            // Blend current direction with new direction for smoother movement
+            const blendFactor = 0.1;
+            player.currentDirection.x = player.currentDirection.x * (1 - blendFactor) + (dx / distance) * blendFactor;
+            player.currentDirection.y = player.currentDirection.y * (1 - blendFactor) + (dy / distance) * blendFactor;
+            
             // Normalize direction
-            const dirX = dx / distance;
-            const dirY = dy / distance;
+            const length = Math.hypot(player.currentDirection.x, player.currentDirection.y);
+            player.currentDirection.x /= length;
+            player.currentDirection.y /= length;
             
             // Apply movement with some randomness
             const speed = TAGGER_SPEED;
             const randomFactor = 0.9 + Math.random() * 0.2;
             
-            const newX = player.x + dirX * speed * randomFactor;
-            const newY = player.y + dirY * speed * randomFactor;
+            const newX = player.x + player.currentDirection.x * speed * randomFactor;
+            const newY = player.y + player.currentDirection.y * speed * randomFactor;
             
             // Check wall collisions
             if (!checkWallCollision(newX, player.y)) {
@@ -432,14 +520,18 @@ function updateTaggerAI(player) {
             // Strategic dash when close to target
             if (minDistance < 100 && Math.random() < 0.05 && Date.now() - player.lastDash > DASH_COOLDOWN) {
                 player.lastDash = Date.now();
-                player.x += dirX * DASH_SPEED;
-                player.y += dirY * DASH_SPEED;
+                player.x += player.currentDirection.x * DASH_SPEED;
+                player.y += player.currentDirection.y * DASH_SPEED;
             }
         }
     }
 }
 
 function updateRunnerAI(player) {
+    // Add human-like delay
+    if (Date.now() - player.lastDecision < 100 + Math.random() * 50) return;
+    player.lastDecision = Date.now();
+    
     // Find nearest tagger
     let nearestTagger = null;
     let minDistance = Infinity;
@@ -455,14 +547,14 @@ function updateRunnerAI(player) {
     });
     
     if (nearestTagger) {
-        // Calculate direction away from tagger
-        const dx = player.x - nearestTagger.x;
-        const dy = player.y - nearestTagger.y;
-        const distance = Math.hypot(dx, dy);
+        // Predict tagger's movement
+        const predictedX = nearestTagger.x + nearestTagger.currentDirection.x * 50;
+        const predictedY = nearestTagger.y + nearestTagger.currentDirection.y * 50;
         
-        // Normalize direction
-        const dirX = dx / distance;
-        const dirY = dy / distance;
+        // Calculate direction away from predicted position
+        const dx = player.x - predictedX;
+        const dy = player.y - predictedY;
+        const distance = Math.hypot(dx, dy);
         
         // Find nearest wall for cover
         let nearestWall = null;
@@ -486,20 +578,39 @@ function updateRunnerAI(player) {
             
             // Blend movement between away from tagger and towards wall
             const blendFactor = Math.min(1, 200 / distance);
-            const finalDirX = (dirX * (1 - blendFactor) + (wallDirX / wallDist) * blendFactor);
-            const finalDirY = (dirY * (1 - blendFactor) + (wallDirY / wallDist) * blendFactor);
+            const finalDirX = (dx / distance) * (1 - blendFactor) + (wallDirX / wallDist) * blendFactor;
+            const finalDirY = (dy / distance) * (1 - blendFactor) + (wallDirY / wallDist) * blendFactor;
             
             // Normalize final direction
             const finalDist = Math.hypot(finalDirX, finalDirY);
             const normalizedDirX = finalDirX / finalDist;
             const normalizedDirY = finalDirY / finalDist;
             
+            // Add human-like movement patterns
+            if (Date.now() - player.lastDirectionChange > 500 + Math.random() * 1000) {
+                player.currentDirection = {
+                    x: normalizedDirX,
+                    y: normalizedDirY
+                };
+                player.lastDirectionChange = Date.now();
+            }
+            
+            // Blend current direction with new direction for smoother movement
+            const blendFactor2 = 0.1;
+            player.currentDirection.x = player.currentDirection.x * (1 - blendFactor2) + normalizedDirX * blendFactor2;
+            player.currentDirection.y = player.currentDirection.y * (1 - blendFactor2) + normalizedDirY * blendFactor2;
+            
+            // Normalize direction
+            const length = Math.hypot(player.currentDirection.x, player.currentDirection.y);
+            player.currentDirection.x /= length;
+            player.currentDirection.y /= length;
+            
             // Apply movement
             const speed = PLAYER_SPEED;
             const randomFactor = 0.8 + Math.random() * 0.4;
             
-            const newX = player.x + normalizedDirX * speed * randomFactor;
-            const newY = player.y + normalizedDirY * speed * randomFactor;
+            const newX = player.x + player.currentDirection.x * speed * randomFactor;
+            const newY = player.y + player.currentDirection.y * speed * randomFactor;
             
             // Keep within map bounds with some margin
             const margin = 50;
@@ -516,8 +627,27 @@ function updateRunnerAI(player) {
             const speed = PLAYER_SPEED;
             const randomFactor = 0.8 + Math.random() * 0.4;
             
-            const newX = player.x + dirX * speed * randomFactor;
-            const newY = player.y + dirY * speed * randomFactor;
+            // Add human-like movement patterns
+            if (Date.now() - player.lastDirectionChange > 500 + Math.random() * 1000) {
+                player.currentDirection = {
+                    x: dx / distance,
+                    y: dy / distance
+                };
+                player.lastDirectionChange = Date.now();
+            }
+            
+            // Blend current direction with new direction for smoother movement
+            const blendFactor = 0.1;
+            player.currentDirection.x = player.currentDirection.x * (1 - blendFactor) + (dx / distance) * blendFactor;
+            player.currentDirection.y = player.currentDirection.y * (1 - blendFactor) + (dy / distance) * blendFactor;
+            
+            // Normalize direction
+            const length = Math.hypot(player.currentDirection.x, player.currentDirection.y);
+            player.currentDirection.x /= length;
+            player.currentDirection.y /= length;
+            
+            const newX = player.x + player.currentDirection.x * speed * randomFactor;
+            const newY = player.y + player.currentDirection.y * speed * randomFactor;
             
             // Keep within map bounds with some margin
             const margin = 50;
@@ -538,8 +668,8 @@ function updateRunnerAI(player) {
         // Emergency dash when tagger is very close
         if (distance < 50 && Math.random() < 0.1 && Date.now() - player.lastDash > DASH_COOLDOWN) {
             player.lastDash = Date.now();
-            player.x += dirX * DASH_SPEED;
-            player.y += dirY * DASH_SPEED;
+            player.x += player.currentDirection.x * DASH_SPEED;
+            player.y += player.currentDirection.y * DASH_SPEED;
         }
     }
 }
