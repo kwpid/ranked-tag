@@ -76,9 +76,11 @@ function queueGame(mode) {
     
     document.getElementById('waitTime').textContent = estimatedTime;
     document.getElementById('queuePlayers').textContent = Math.floor(Math.random() * 100) + 50;
+    document.getElementById('timeElapsed').textContent = '0';
     
     gameState.queueInterval = setInterval(() => {
         gameState.queueTime++;
+        document.getElementById('timeElapsed').textContent = gameState.queueTime;
         if (gameState.queueTime >= estimatedTime) {
             clearInterval(gameState.queueInterval);
             startGame();
@@ -184,11 +186,16 @@ function startGameLoop() {
     gameState.isRunning = true;
     gameState.gameTime = GAME_DURATION;
     
+    // Clear any existing intervals
+    if (gameState.gameInterval) {
+        clearInterval(gameState.gameInterval);
+    }
+    
     gameState.gameInterval = setInterval(() => {
         updateGame();
         renderGame();
         
-        gameState.gameTime -= 1000;
+        gameState.gameTime -= 1000 / 60; // Update time more frequently
         document.getElementById('gameTimer').textContent = Math.ceil(gameState.gameTime / 1000);
         
         if (gameState.gameTime <= 0 || checkGameEnd()) {
@@ -386,11 +393,24 @@ function renderGame() {
     // Draw players
     gameState.players.forEach(player => {
         if (player.isActive) {
+            // Draw player circle
             ctx.beginPath();
             ctx.arc(player.x, player.y, PLAYER_RADIUS, 0, Math.PI * 2);
             ctx.fillStyle = player.color;
             ctx.fill();
             ctx.closePath();
+            
+            // Draw player indicator if it's the human player
+            if (player.isHuman) {
+                // Draw arrow above player
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y - PLAYER_RADIUS - 15);
+                ctx.lineTo(player.x - 10, player.y - PLAYER_RADIUS - 5);
+                ctx.lineTo(player.x + 10, player.y - PLAYER_RADIUS - 5);
+                ctx.closePath();
+                ctx.fillStyle = '#4CAF50';
+                ctx.fill();
+            }
         }
     });
 }
