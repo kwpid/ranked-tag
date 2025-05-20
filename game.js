@@ -116,6 +116,30 @@ function startGame() {
     startCountdown();
 }
 
+function findSafeSpawnLocation() {
+    const canvas = document.getElementById('gameCanvas');
+    let x, y;
+    let isSafe = false;
+    
+    while (!isSafe) {
+        x = Math.random() * (canvas.width - 100) + 50;
+        y = Math.random() * (canvas.height - 100) + 50;
+        
+        // Check if position is safe (not in wall and not too close to other players)
+        isSafe = !checkWallCollision(x, y);
+        
+        // Check distance from other players
+        if (isSafe) {
+            isSafe = !gameState.players.some(player => {
+                const distance = Math.hypot(player.x - x, player.y - y);
+                return distance < PLAYER_RADIUS * 4; // Minimum distance between players
+            });
+        }
+    }
+    
+    return { x, y };
+}
+
 function initializeGame() {
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -130,13 +154,14 @@ function initializeGame() {
     // Initialize players
     gameState.players = [];
     
-    // Randomly assign roles
-    const isHumanTagger = Math.random() < 0.5;
+    // For 1v1, ensure one player is tagger and one is runner
+    const isHumanTagger = gameState.gameMode === 1 ? Math.random() < 0.5 : Math.random() < 0.5;
     
     // Add human player
+    const humanSpawn = findSafeSpawnLocation();
     gameState.players.push({
-        x: Math.random() * (canvas.width - 100) + 50,
-        y: Math.random() * (canvas.height - 100) + 50,
+        x: humanSpawn.x,
+        y: humanSpawn.y,
         isTagger: isHumanTagger,
         isHuman: true,
         isActive: true,
@@ -148,10 +173,11 @@ function initializeGame() {
     // Add AI players
     const totalPlayers = gameState.gameMode * 2;
     for (let i = 1; i < totalPlayers; i++) {
-        const isTagger = (i < totalPlayers / 2) !== isHumanTagger; // Ensure opposite team of human
+        const isTagger = gameState.gameMode === 1 ? !isHumanTagger : (i < totalPlayers / 2) !== isHumanTagger;
+        const aiSpawn = findSafeSpawnLocation();
         gameState.players.push({
-            x: Math.random() * (canvas.width - 100) + 50,
-            y: Math.random() * (canvas.height - 100) + 50,
+            x: aiSpawn.x,
+            y: aiSpawn.y,
             isTagger: isTagger,
             isHuman: false,
             isActive: true,
@@ -160,11 +186,10 @@ function initializeGame() {
             targetX: 0,
             targetY: 0,
             lastDecision: 0,
-            rating: playerData[`rating${gameState.gameMode}v${gameState.gameMode}`] + (Math.random() * 100 - 50) // AI rating within ±50 of player
+            rating: playerData[`rating${gameState.gameMode}v${gameState.gameMode}`] + (Math.random() * 100 - 50)
         });
     }
 
-    // Set up keyboard listeners
     setupKeyboardListeners();
 }
 
@@ -323,6 +348,39 @@ function updateAIPlayer(player) {
     }
 }
 
+function findPathToTarget(startX, startY, targetX, targetY) {
+    // Simple pathfinding that avoids walls
+    const path = [];
+    let currentX = startX;
+    let currentY = startY;
+    
+    // Try direct path first
+    if (!checkWallCollision(targetX, targetY)) {
+        return { x: targetX, y: targetY };
+    }
+    
+    // If direct path is blocked, try to find a way around
+    const angle = Math.atan2(targetY - startY, targetX - startX);
+    const distance = Math.hypot(targetX - startX, targetY - startY);
+    
+    // Try different angles to find a clear path
+    for (let offset = -Math.PI/4; offset <= Math.PI/4; offset += Math.PI/8) {
+        const testAngle = angle + offset;
+        const testX = startX + Math.cos(testAngle) * distance;
+        const testY = startY + Math.sin(testAngle) * distance;
+        
+        if (!checkWallCollision(testX, testY)) {
+            return { x: testX, y: testY };
+        }
+    }
+    
+    // If no clear path found, move towards target while avoiding walls
+    return {
+        x: startX + Math.cos(angle) * PLAYER_SPEED,
+        y: startY + Math.sin(angle) * PLAYER_SPEED
+    };
+}
+
 function updateTaggerAI(player) {
     // Find nearest runner
     let nearestRunner = null;
@@ -339,39 +397,44 @@ function updateTaggerAI(player) {
     });
     
     if (nearestRunner) {
-        // Calculate direction to target
-        const dx = nearestRunner.x - player.x;
-        const dy = nearestRunner.y - player.y;
+        // Find path to target
+        const path = findPathToTarget(player.x, player.y, nearestRunner.x, nearestRunner.y);
+        
+        // Calculate direction to next path point
+        const dx = path.x - player.x;
+        const dy = path.y - player.y;
         const distance = Math.hypot(dx, dy);
         
-        // Normalize direction
-        const dirX = dx / distance;
-        const dirY = dy / distance;
-        
-        // Apply movement with some randomness
-        const speed = TAGGER_SPEED;
-        const randomFactor = 0.9 + Math.random() * 0.2; // Less random variation for taggers
-        
-        const newX = player.x + dirX * speed * randomFactor;
-        const newY = player.y + dirY * speed * randomFactor;
-        
-        // Check wall collisions
-        if (!checkWallCollision(newX, player.y)) {
-            player.x = newX;
-        }
-        if (!checkWallCollision(player.x, newY)) {
-            player.y = newY;
-        }
-        
-        // Keep player in bounds
-        player.x = Math.max(PLAYER_RADIUS, Math.min(800 - PLAYER_RADIUS, player.x));
-        player.y = Math.max(PLAYER_RADIUS, Math.min(600 - PLAYER_RADIUS, player.y));
-        
-        // Strategic dash when close to target
-        if (distance < 100 && Math.random() < 0.05 && Date.now() - player.lastDash > DASH_COOLDOWN) {
-            player.lastDash = Date.now();
-            player.x += dirX * DASH_SPEED;
-            player.y += dirY * DASH_SPEED;
+        if (distance > 0) {
+            // Normalize direction
+            const dirX = dx / distance;
+            const dirY = dy / distance;
+            
+            // Apply movement with some randomness
+            const speed = TAGGER_SPEED;
+            const randomFactor = 0.9 + Math.random() * 0.2;
+            
+            const newX = player.x + dirX * speed * randomFactor;
+            const newY = player.y + dirY * speed * randomFactor;
+            
+            // Check wall collisions
+            if (!checkWallCollision(newX, player.y)) {
+                player.x = newX;
+            }
+            if (!checkWallCollision(player.x, newY)) {
+                player.y = newY;
+            }
+            
+            // Keep player in bounds
+            player.x = Math.max(PLAYER_RADIUS, Math.min(800 - PLAYER_RADIUS, player.x));
+            player.y = Math.max(PLAYER_RADIUS, Math.min(600 - PLAYER_RADIUS, player.y));
+            
+            // Strategic dash when close to target
+            if (minDistance < 100 && Math.random() < 0.05 && Date.now() - player.lastDash > DASH_COOLDOWN) {
+                player.lastDash = Date.now();
+                player.x += dirX * DASH_SPEED;
+                player.y += dirY * DASH_SPEED;
+            }
         }
     }
 }
@@ -438,25 +501,33 @@ function updateRunnerAI(player) {
             const newX = player.x + normalizedDirX * speed * randomFactor;
             const newY = player.y + normalizedDirY * speed * randomFactor;
             
-            if (!checkWallCollision(newX, player.y)) {
-                player.x = newX;
-            }
-            if (!checkWallCollision(player.x, newY)) {
-                player.y = newY;
+            // Keep within map bounds with some margin
+            const margin = 50;
+            if (newX > margin && newX < 800 - margin && newY > margin && newY < 600 - margin) {
+                if (!checkWallCollision(newX, player.y)) {
+                    player.x = newX;
+                }
+                if (!checkWallCollision(player.x, newY)) {
+                    player.y = newY;
+                }
             }
         } else {
-            // Just run away from tagger
+            // Move away from tagger but stay within map bounds
             const speed = PLAYER_SPEED;
             const randomFactor = 0.8 + Math.random() * 0.4;
             
             const newX = player.x + dirX * speed * randomFactor;
             const newY = player.y + dirY * speed * randomFactor;
             
-            if (!checkWallCollision(newX, player.y)) {
-                player.x = newX;
-            }
-            if (!checkWallCollision(player.x, newY)) {
-                player.y = newY;
+            // Keep within map bounds with some margin
+            const margin = 50;
+            if (newX > margin && newX < 800 - margin && newY > margin && newY < 600 - margin) {
+                if (!checkWallCollision(newX, player.y)) {
+                    player.x = newX;
+                }
+                if (!checkWallCollision(player.x, newY)) {
+                    player.y = newY;
+                }
             }
         }
         
