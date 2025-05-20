@@ -7,6 +7,14 @@ const DASH_COOLDOWN = 3000;
 const GAME_DURATION = 60000;
 const COUNTDOWN_DURATION = 3000;
 
+// Colors
+const COLORS = {
+    runner: '#00a8ff',  // Bright blue
+    tagger: '#ff4757',  // Bright red
+    walls: '#a4b0be',   // Light gray
+    background: '#f1f2f6' // Light background
+};
+
 // Game state
 let gameState = {
     players: [],
@@ -78,7 +86,7 @@ function queueGame(mode) {
     const mmr = playerData[`rating${mode}v${mode}`];
     const mmrMultiplier = mmr < 1200 ? 0.7 : mmr > 1800 ? 1.5 : 1;
     
-    const baseQueueTime = 30;
+    const baseQueueTime = 10; // Reduced from 30 to 10 seconds
     const estimatedTime = Math.round(baseQueueTime * timeMultiplier * mmrMultiplier);
     
     document.getElementById('waitTime').textContent = estimatedTime;
@@ -121,15 +129,18 @@ function initializeGame() {
     // Initialize players
     gameState.players = [];
     
-    // Add human player (always a runner)
+    // Randomly assign roles
+    const isHumanTagger = Math.random() < 0.5;
+    
+    // Add human player
     gameState.players.push({
         x: Math.random() * (canvas.width - 100) + 50,
         y: Math.random() * (canvas.height - 100) + 50,
-        isTagger: false,
+        isTagger: isHumanTagger,
         isHuman: true,
         isActive: true,
         lastDash: 0,
-        color: '#3498db'
+        color: isHumanTagger ? COLORS.tagger : COLORS.runner
     });
     
     // Add AI players
@@ -143,7 +154,7 @@ function initializeGame() {
             isHuman: false,
             isActive: true,
             lastDash: 0,
-            color: isTagger ? '#e74c3c' : '#3498db',
+            color: isTagger ? COLORS.tagger : COLORS.runner,
             targetX: 0,
             targetY: 0,
             lastDecision: 0
@@ -298,8 +309,8 @@ function updateHumanPlayer(player) {
 }
 
 function updateAIPlayer(player) {
-    // Add human-like delay
-    if (Date.now() - player.lastDecision < 100) return;
+    // Add human-like delay but make it shorter
+    if (Date.now() - player.lastDecision < 50) return; // Reduced from 100ms to 50ms
     player.lastDecision = Date.now();
     
     // Find nearest target
@@ -326,10 +337,12 @@ function updateAIPlayer(player) {
         const dirX = dx / distance;
         const dirY = dy / distance;
         
-        // Apply movement
+        // Apply movement with some randomness for more human-like behavior
         const speed = player.isTagger ? TAGGER_SPEED : PLAYER_SPEED;
-        const newX = player.x + dirX * speed;
-        const newY = player.y + dirY * speed;
+        const randomFactor = 0.8 + Math.random() * 0.4; // Random speed variation between 80% and 120%
+        
+        const newX = player.x + dirX * speed * randomFactor;
+        const newY = player.y + dirY * speed * randomFactor;
         
         // Check wall collisions
         if (!checkWallCollision(newX, player.y)) {
@@ -343,12 +356,30 @@ function updateAIPlayer(player) {
         player.x = Math.max(PLAYER_RADIUS, Math.min(800 - PLAYER_RADIUS, player.x));
         player.y = Math.max(PLAYER_RADIUS, Math.min(600 - PLAYER_RADIUS, player.y));
         
-        // Random dash
-        if (Math.random() < 0.01 && Date.now() - player.lastDash > DASH_COOLDOWN) {
+        // Random dash with increased probability
+        if (Math.random() < 0.02 && Date.now() - player.lastDash > DASH_COOLDOWN) { // Increased from 0.01 to 0.02
             player.lastDash = Date.now();
             player.x += dirX * DASH_SPEED;
             player.y += dirY * DASH_SPEED;
         }
+    } else {
+        // If no target found, move randomly
+        const randomAngle = Math.random() * Math.PI * 2;
+        const speed = player.isTagger ? TAGGER_SPEED : PLAYER_SPEED;
+        
+        const newX = player.x + Math.cos(randomAngle) * speed;
+        const newY = player.y + Math.sin(randomAngle) * speed;
+        
+        if (!checkWallCollision(newX, player.y)) {
+            player.x = newX;
+        }
+        if (!checkWallCollision(player.x, newY)) {
+            player.y = newY;
+        }
+        
+        // Keep player in bounds
+        player.x = Math.max(PLAYER_RADIUS, Math.min(800 - PLAYER_RADIUS, player.x));
+        player.y = Math.max(PLAYER_RADIUS, Math.min(600 - PLAYER_RADIUS, player.y));
     }
 }
 
@@ -388,11 +419,11 @@ function renderGame() {
     const ctx = canvas.getContext('2d');
     
     // Clear canvas
-    ctx.fillStyle = '#2a2a2a';
+    ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     // Draw walls
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = COLORS.walls;
     gameState.walls.forEach(wall => {
         ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
     });
