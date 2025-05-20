@@ -1,1 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ranked Tag</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Arial', sans-serif;
+        }
 
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            margin: 20px auto;
+            background-color: #2a2a2a;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: background-color 0.3s;
+        }
+
+        .button:hover {
+            background-color: #45a049;
+        }
+
+        .stats {
+            background-color: #333;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px;
+            width: 80%;
+            max-width: 400px;
+        }
+
+        .queue-info {
+            font-size: 18px;
+            margin: 20px 0;
+        }
+
+        .countdown {
+            font-size: 48px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .player-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #666;
+            margin-right: 10px;
+        }
+
+        .player-stats {
+            flex: 1;
+        }
+
+        .player-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .player-rank {
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- Home Screen -->
+        <div id="homeScreen" class="screen active">
+            <div class="player-info">
+                <div class="player-avatar"></div>
+                <div class="player-stats">
+                    <div class="player-name">Player</div>
+                    <div class="player-rank">Rank: Unranked</div>
+                </div>
+            </div>
+            <div class="stats">
+                <h3>Stats</h3>
+                <p>1v1 Rating: <span id="rating1v1">0</span></p>
+                <p>2v2 Rating: <span id="rating2v2">0</span></p>
+                <p>3v3 Rating: <span id="rating3v3">0</span></p>
+            </div>
+            <button class="button" onclick="queueGame(1)">Queue 1v1</button>
+            <button class="button" onclick="queueGame(2)">Queue 2v2</button>
+            <button class="button" onclick="queueGame(3)">Queue 3v3</button>
+        </div>
+
+        <!-- Queue Screen -->
+        <div id="queueScreen" class="screen">
+            <h2>Finding Match...</h2>
+            <div class="queue-info">
+                <p>Estimated wait time: <span id="waitTime">30</span> seconds</p>
+                <p>Players in queue: <span id="queuePlayers">0</span></p>
+            </div>
+            <button class="button" onclick="cancelQueue()">Cancel</button>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen">
+            <div id="gameCountdown" class="countdown">3</div>
+            <div id="gameTimer">60</div>
+        </div>
+
+        <!-- End Screen -->
+        <div id="endScreen" class="screen">
+            <h2 id="gameResult">Game Over</h2>
+            <div class="stats">
+                <p>Match Duration: <span id="matchDuration">0</span>s</p>
+                <p>Rating Change: <span id="ratingChange">+0</span></p>
+            </div>
+            <button class="button" onclick="returnToMenu()">Menu</button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
