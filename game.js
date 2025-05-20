@@ -18,7 +18,14 @@ let gameState = {
     queueTime: 0,
     queueInterval: null,
     gameInterval: null,
-    countdownInterval: null
+    countdownInterval: null,
+    keys: {
+        w: false,
+        a: false,
+        s: false,
+        d: false,
+        space: false
+    }
 };
 
 // Player data
@@ -142,6 +149,31 @@ function initializeGame() {
             lastDecision: 0
         });
     }
+
+    // Set up keyboard listeners
+    setupKeyboardListeners();
+}
+
+function setupKeyboardListeners() {
+    document.addEventListener('keydown', (e) => {
+        switch(e.key.toLowerCase()) {
+            case 'w': gameState.keys.w = true; break;
+            case 'a': gameState.keys.a = true; break;
+            case 's': gameState.keys.s = true; break;
+            case 'd': gameState.keys.d = true; break;
+            case ' ': gameState.keys.space = true; break;
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        switch(e.key.toLowerCase()) {
+            case 'w': gameState.keys.w = false; break;
+            case 'a': gameState.keys.a = false; break;
+            case 's': gameState.keys.s = false; break;
+            case 'd': gameState.keys.d = false; break;
+            case ' ': gameState.keys.space = false; break;
+        }
+    });
 }
 
 function generateWalls() {
@@ -223,39 +255,14 @@ function updateGame() {
 }
 
 function updateHumanPlayer(player) {
-    const keys = {
-        w: false,
-        a: false,
-        s: false,
-        d: false,
-        space: false
-    };
-    
-    // Handle keyboard input
-    document.addEventListener('keydown', (e) => {
-        if (e.key.toLowerCase() === 'w') keys.w = true;
-        if (e.key.toLowerCase() === 'a') keys.a = true;
-        if (e.key.toLowerCase() === 's') keys.s = true;
-        if (e.key.toLowerCase() === 'd') keys.d = true;
-        if (e.key === ' ') keys.space = true;
-    });
-    
-    document.addEventListener('keyup', (e) => {
-        if (e.key.toLowerCase() === 'w') keys.w = false;
-        if (e.key.toLowerCase() === 'a') keys.a = false;
-        if (e.key.toLowerCase() === 's') keys.s = false;
-        if (e.key.toLowerCase() === 'd') keys.d = false;
-        if (e.key === ' ') keys.space = false;
-    });
-    
     // Calculate movement
     let dx = 0;
     let dy = 0;
     
-    if (keys.w) dy -= 1;
-    if (keys.s) dy += 1;
-    if (keys.a) dx -= 1;
-    if (keys.d) dx += 1;
+    if (gameState.keys.w) dy -= 1;
+    if (gameState.keys.s) dy += 1;
+    if (gameState.keys.a) dx -= 1;
+    if (gameState.keys.d) dx += 1;
     
     // Normalize diagonal movement
     if (dx !== 0 && dy !== 0) {
@@ -265,11 +272,11 @@ function updateHumanPlayer(player) {
     }
     
     // Apply dash
-    const speed = keys.space && Date.now() - player.lastDash > DASH_COOLDOWN
+    const speed = gameState.keys.space && Date.now() - player.lastDash > DASH_COOLDOWN
         ? DASH_SPEED
         : player.isTagger ? TAGGER_SPEED : PLAYER_SPEED;
     
-    if (keys.space && Date.now() - player.lastDash > DASH_COOLDOWN) {
+    if (gameState.keys.space && Date.now() - player.lastDash > DASH_COOLDOWN) {
         player.lastDash = Date.now();
     }
     
